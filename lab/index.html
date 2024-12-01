@@ -1,38 +1,141 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>JupyterLite-KKOS</title>
-    <script>console.log('hello kkos');</script>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="Description" content="WASM powered Jupyter running in the browser." />
-    <link rel="manifest" href="../manifest.webmanifest" />
-    <link
-      id="jupyter-lite-main"
-      rel="preload"
-      href="../build/lab/bundle.js"
-      main="index"
-      as="script"
-    />
-    <script
-      id="jupyter-config-data"
-      type="application/json"
-      data-jupyter-lite-root=".."
-    >
+
+<head>
+  <title>JupyterLite</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="Description" content="WASM powered Jupyter running in the browser." />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link id="jupyter-lite-main" rel="preload" href="../build/lab/bundle.js" main="index" as="script" />
+  <script>
+    const qs = () => {
+      const queryString = window.location.search.slice(1);
+      const paramsObj = {};
+      if (!queryString) return paramsObj;
+      const pairs = queryString.split('&');
+      pairs.forEach((pair) => {
+        const [key, value] = pair.split('=').map(decodeURIComponent);
+        if (paramsObj.hasOwnProperty(key)) {
+          if (Array.isArray(paramsObj[key])) {
+            paramsObj[key].push(value);
+          } else {
+            paramsObj[key] = [paramsObj[key], value];
+          }
+        } else {
+          paramsObj[key] = value;
+        }
+      });
+      return paramsObj;
+    };
+
+    async function ajaxFetch(options) {
+      const defaults = {
+        url: '',
+        method: 'GET',
+        data: null,
+        headers: {},
+        responseType: 'json',
+        success: function () { },
+        error: function () { },
+      };
+
+      options = Object.assign({}, defaults, options);
+
+      try {
+        const config = {
+          method: options.method,
+          headers: options.headers,
+          body:
+            options.method === 'POST' && options.data
+              ? JSON.stringify(options.data)
+              : null,
+        };
+
+        const response = await fetch(options.url, config);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        let responseData;
+        if (options.responseType === 'json') {
+          responseData = await response.json();
+        } else {
+          responseData = await response.text();
+        }
+
+        options.success(responseData, response.status, response);
+      } catch (error) {
+        options.error(error.message, error.status || 0, error);
+      }
+    }
+
+    const logs = (record_json) => {
+      const { task_uuid, task_round, token } = qs();
+      ajaxFetch({
+        method: 'POST',
+        url: 'https://llmapi.chaofanzhai.com/v1/task_logs',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        data: {
+          task_uuid,
+          task_round,
+          record_json,
+        },
+      });
+    };
+
+    window.addEventListener('paste', (event) => {
+      let text = event.clipboardData.getData('text');
+      const match = text.match(/^[A-Z_]+:\s*/);
+      text = match ? text.replace(match.toString(), '') : text;
+      logs({ type: `PASTE_${match || 'OTHER'}`, content: text });
+    });
+
+    document.addEventListener(
+      'click',
+      (e) => {
+        const dom = e.target;
+        if (
+          dom.tagName === 'JP-BUTTON' &&
+          dom.parentElement.getAttribute('data-jp-item-name') === 'run'
+        ) {
+          document
+            .querySelectorAll('.jp-WindowedPanel-outer')
+            .forEach((el) => {
+              logs({
+                type: 'CODE_RUN',
+                codeContent: el.innerHTML,
+              });
+            });
+        }
+      },
+      true
+    );
+  </script>
+  <style>
+    #jp-menu-panel {
+      display: none !important;
+    }
+  </style>
+  <script id="jupyter-config-data" type="application/json" data-jupyter-lite-root="..">
       {}
     </script>
-    <script>
-      (async function () {
-        const { pathname, origin, search, hash } = window.location;
-        if (pathname.match(/(index.html|\/?)$/) == null) {
-          window.location.href = `${origin}${pathname}/${search}${hash}`;
-          return;
-        }
-        await import(
-          '../config-utils.js'
-        );
-      }.call(this));
-    </script>
-  </head>
-  <body data-notebook="lab"></body>
+  <script>
+    (async function () {
+      const { pathname, origin, search, hash } = window.location;
+      if (pathname.match(/(index.html|\/?)$/) == null) {
+        window.location.href = `${origin}${pathname}/${search}${hash}`;
+        return;
+      }
+      await import('../config-utils.js');
+    }).call(this);
+  </script>
+</head>
+
+<body data-notebook="lab"></body>
+
 </html>
